@@ -44,7 +44,6 @@ public abstract class PhysicsApp {
     public static Transform[] startTransforms = new Transform[maxNumObjects];
     public static CollisionShape[] gShapePtr = new CollisionShape[maxNumObjects]; //1 rigidbody has 1 shape (no re-use of shapes)
     public static RigidBody pickedBody = null; // for deactivation state
-    private static float mousePickClamping = 3f;
 
     static {
         for (int i = 0; i < startTransforms.length; i++) {
@@ -60,10 +59,15 @@ public abstract class PhysicsApp {
     // constraint for mouse picking
     protected TypedConstraint pickConstraint = null;
     protected CollisionShape shootBoxShape = null;
-    protected float cameraDistance = 15f;
     protected int debugMode = 0;
+
+    protected float cameraDistance = 15f;
     protected float ele = 20f;
     protected float azi = 180f;
+    protected float nextCameraDistance = cameraDistance;
+    protected float nextEle = ele;
+    protected float nextAzi = azi;
+
     protected final Vector3f cameraPosition = new Vector3f(0f, 0f, 0f);
     protected final Vector3f cameraTargetPosition = new Vector3f(0f, 0f, 0f); // look at
     protected float scaleBottom = 0.5f;
@@ -80,7 +84,9 @@ public abstract class PhysicsApp {
     private CProfileIterator profileIterator;
     private double zNear = 1.0;
     private double zFar = 10000.0;
-
+    private float rotationMomentum = 0.99f;
+    private float cameraMomentum = 0.99f;
+    
     private WeakHashMap<RigidBody, BodyControl> bodyControl = new WeakHashMap();
     
     public PhysicsApp() {
@@ -155,9 +161,18 @@ public abstract class PhysicsApp {
         }
     }
 
+    public float lerp(float current, float next, float momentum) {
+        return current * momentum + (1.0f - momentum) * next;
+    }
+
     public void updateCamera() {
         gl.glMatrixMode(GL_PROJECTION);
         gl.glLoadIdentity();
+
+        ele = lerp(ele, nextEle, rotationMomentum);
+        azi = lerp(azi, nextAzi, rotationMomentum);
+        cameraDistance = lerp(cameraDistance, nextCameraDistance, cameraMomentum);
+
         float rele = ele * 0.01745329251994329547f; // rads per deg
         float razi = azi * 0.01745329251994329547f; // rads per deg
 
@@ -254,6 +269,9 @@ public abstract class PhysicsApp {
         gl.glViewport(0, 0, w, h);
         updateCamera();
     }
+
+    abstract public void mouseMotionFunc(int x, int y);
+    abstract public void mouseFunc(int button, int state, int x, int y);
 
 //    public void keyboardCallback(char key, int x, int y, int modifiers) {
 //        lastKey = 0;
@@ -486,46 +504,6 @@ public abstract class PhysicsApp {
         }
     }
 
-//    public void displayCallback() {
-//    }
-    public void shootBox(Vector3f destination) {
-        if (dynamicsWorld != null) {
-            float mass = 10f;
-            Transform startTransform = new Transform();
-            startTransform.setIdentity();
-            Vector3f camPos = new Vector3f(getCameraPosition());
-            startTransform.origin.set(camPos);
-
-            if (shootBoxShape == null) {
-                //#define TEST_UNIFORM_SCALING_SHAPE 1
-                //#ifdef TEST_UNIFORM_SCALING_SHAPE
-                //btConvexShape* childShape = new btBoxShape(btVector3(1.f,1.f,1.f));
-                //m_shootBoxShape = new btUniformScalingShape(childShape,0.5f);
-                //#else
-                shootBoxShape = new BoxShape(new Vector3f(1f, 1f, 1f));
-                //#endif//
-            }
-
-            RigidBody body = this.newRigidBody(mass, startTransform, shootBoxShape, new Vector3f(1f, 0.2f, 0.2f));
-            dynamicsWorld.addRigidBody(body);
-
-            Vector3f linVel = new Vector3f(destination.x - camPos.x, destination.y - camPos.y, destination.z - camPos.z);
-            linVel.normalize();
-            linVel.scale(ShootBoxInitialSpeed);
-
-            Transform worldTrans = body.getWorldTransform(new Transform());
-            worldTrans.origin.set(camPos);
-            worldTrans.setRotation(new Quat4f(0f, 0f, 0f, 1f));
-            body.setWorldTransform(worldTrans);
-
-            body.setLinearVelocity(linVel);
-            body.setAngularVelocity(new Vector3f(0f, 0f, 0f));
-
-            body.setCcdMotionThreshold(1f);
-            body.setCcdSweptSphereRadius(0.2f);
-        }
-    }
-
     public Vector3f getRayTo(int x, int y) {
         float top = 1f;
         float bottom = -1f;
@@ -588,125 +566,9 @@ public abstract class PhysicsApp {
         return rayTo;
     }
 
-    public void mouseFunc(int button, int state, int x, int y) {
-        //printf("button %i, state %i, x=%i,y=%i\n",button,state,x,y);
-        //button 0, state 0 means left mouse down
-
-        Vector3f rayTo = new Vector3f(getRayTo(x, y));
-
-        switch (button) {
-            case 2: {
-                if (state == 0) {
-                    shootBox(rayTo);
-                }
-                break;
-            }
-            case 1: {
-                if (state == 0) {
-                    // apply an impulse
-                    if (dynamicsWorld != null) {
-                        CollisionWorld.ClosestRayResultCallback rayCallback = new CollisionWorld.ClosestRayResultCallback(cameraPosition, rayTo);
-                        dynamicsWorld.rayTest(cameraPosition, rayTo, rayCallback);
-                        if (rayCallback.hasHit()) {
-                            RigidBody body = RigidBody.upcast(rayCallback.collisionObject);
-                            if (body != null) {
-                                body.setActivationState(CollisionObject.ACTIVE_TAG);
-                                Vector3f impulse = new Vector3f(rayTo);
-                                impulse.normalize();
-                                float impulseStrength = 10f;
-                                impulse.scale(impulseStrength);
-                                Vector3f relPos = new Vector3f();
-                                relPos.sub(rayCallback.hitPointWorld, body.getCenterOfMassPosition(new Vector3f()));
-                                body.applyImpulse(impulse, relPos);
-                            }
-                        }
-                    }
-                } else {
-                }
-                break;
-            }
-            case 0: {
-                if (state == 0) {
-                    // add a point to point constraint for picking
-                    if (dynamicsWorld != null) {
-                        CollisionWorld.ClosestRayResultCallback rayCallback = new CollisionWorld.ClosestRayResultCallback(cameraPosition, rayTo);
-                        dynamicsWorld.rayTest(cameraPosition, rayTo, rayCallback);
-                        if (rayCallback.hasHit()) {
-                            RigidBody body = RigidBody.upcast(rayCallback.collisionObject);
-                            if (body != null) {
-                                // other exclusions?
-                                if (!(body.isStaticObject() || body.isKinematicObject())) {
-                                    pickedBody = body;
-                                    pickedBody.setActivationState(CollisionObject.DISABLE_DEACTIVATION);
-
-                                    Vector3f pickPos = new Vector3f(rayCallback.hitPointWorld);
-
-                                    Transform tmpTrans = body.getCenterOfMassTransform(new Transform());
-                                    tmpTrans.inverse();
-                                    Vector3f localPivot = new Vector3f(pickPos);
-                                    tmpTrans.transform(localPivot);
-
-                                    Point2PointConstraint p2p = new Point2PointConstraint(body, localPivot);
-                                    p2p.setting.impulseClamp = mousePickClamping;
-
-                                    dynamicsWorld.addConstraint(p2p);
-                                    pickConstraint = p2p;
-                                    // save mouse position for dragging
-                                    BulletStats.gOldPickingPos.set(rayTo);
-                                    Vector3f eyePos = new Vector3f(cameraPosition);
-                                    Vector3f tmp = new Vector3f();
-                                    tmp.sub(pickPos, eyePos);
-                                    BulletStats.gOldPickingDist = tmp.length();
-                                    // very weak constraint for picking
-                                    p2p.setting.tau = 0.1f;
-                                }
-                            }
-                        }
-                    }
-
-                } else {
-
-                    if (pickConstraint != null && dynamicsWorld != null) {
-                        dynamicsWorld.removeConstraint(pickConstraint);
-                        // delete m_pickConstraint;
-                        //printf("removed constraint %i",gPickingConstraintId);
-                        pickConstraint = null;
-                        pickedBody.forceActivationState(CollisionObject.ACTIVE_TAG);
-                        pickedBody.setDeactivationTime(0f);
-                        pickedBody = null;
-                    }
-                }
-                break;
-            }
-            default: {
-            }
-        }
-    }
-
-    public void mouseMotionFunc(int x, int y) {
-        if (pickConstraint != null) {
-            // move the constraint pivot
-            Point2PointConstraint p2p = (Point2PointConstraint) pickConstraint;
-            if (p2p != null) {
-                // keep it at the same picking distance
-
-                Vector3f newRayTo = new Vector3f(getRayTo(x, y));
-                Vector3f eyePos = new Vector3f(cameraPosition);
-                Vector3f dir = new Vector3f();
-                dir.sub(newRayTo, eyePos);
-                dir.normalize();
-                dir.scale(BulletStats.gOldPickingDist);
-
-                Vector3f newPos = new Vector3f();
-                newPos.add(eyePos, dir);
-                p2p.setPivotB(newPos);
-            }
-        }
-    }
-
     public boolean removeBody(RigidBody b) {
+        dynamicsWorld.removeRigidBody(b);
         setControl(b, null);
-        //TODO implement
         return false;
     }
 
@@ -717,6 +579,7 @@ public abstract class PhysicsApp {
         return newRigidBody(mass, startTransform, shape, new AbstractBodyControl(color));
     }
 
+    /** creates a new rigid body and registers its controller, but does not add it to the world */
     public RigidBody newRigidBody(float mass, Transform startTransform, CollisionShape shape, BodyControl control) {
         // rigidbody is dynamic if and only if mass is non zero, otherwise static
         boolean isDynamic = (mass != 0f);
@@ -742,10 +605,6 @@ public abstract class PhysicsApp {
 
         setControl(body, control);
         
-        //body.setActivationState(RigidBody.ISLAND_SLEEPING);
-        //dynamicsWorld.addRigidBody(body);
-        //body.setActivationState(RigidBody.ISLAND_SLEEPING);
-
         return body;
     }
 
@@ -791,78 +650,6 @@ public abstract class PhysicsApp {
     }
     private static double time_since_reset = 0f;
 
-    protected float showProfileInfo(float xOffset, float yStart, float yIncr) {
-        if (!idle) {
-            time_since_reset = CProfileManager.getTimeSinceReset();
-        }
-
-        {
-            // recompute profiling data, and store profile strings
-
-            double totalTime = 0;
-
-            int frames_since_reset = CProfileManager.getFrameCountSinceReset();
-
-            profileIterator.first();
-
-            double parent_time = profileIterator.isRoot() ? time_since_reset : profileIterator.getCurrentParentTotalTime();
-
-            {
-                buf.setLength(0);
-                buf.append("--- Profiling: ");
-                buf.append(profileIterator.getCurrentParentName());
-                buf.append(" (total running time: ");
-                FastFormat.append(buf, (float) parent_time, 3);
-                buf.append(" ms) ---");
-                displayProfileString(xOffset, yStart, buf);
-                yStart += yIncr;
-                String s = "press number (1,2...) to display child timings, or 0 to go up to parent";
-                displayProfileString(xOffset, yStart, s);
-                yStart += yIncr;
-            }
-
-            double accumulated_time = 0.f;
-
-            for (int i = 0; !profileIterator.isDone(); profileIterator.next()) {
-                double current_total_time = profileIterator.getCurrentTotalTime();
-                accumulated_time += current_total_time;
-                double fraction = parent_time > BulletGlobals.FLT_EPSILON ? (current_total_time / parent_time) * 100 : 0f;
-
-                buf.setLength(0);
-                FastFormat.append(buf, ++i);
-                buf.append(" -- ");
-                buf.append(profileIterator.getCurrentName());
-                buf.append(" (");
-                FastFormat.append(buf, (float) fraction, 2);
-                buf.append(" %) :: ");
-                FastFormat.append(buf, (float) (current_total_time / (double) frames_since_reset), 3);
-                buf.append(" ms / frame (");
-                FastFormat.append(buf, profileIterator.getCurrentTotalCalls());
-                buf.append(" calls)");
-
-                displayProfileString(xOffset, yStart, buf);
-                yStart += yIncr;
-                totalTime += current_total_time;
-            }
-
-            buf.setLength(0);
-            buf.append("Unaccounted (");
-            FastFormat.append(buf, (float) (parent_time > BulletGlobals.FLT_EPSILON ? ((parent_time - accumulated_time) / parent_time) * 100 : 0.f), 3);
-            buf.append(" %) :: ");
-            FastFormat.append(buf, (float) (parent_time - accumulated_time), 3);
-            buf.append(" ms");
-
-            displayProfileString(xOffset, yStart, buf);
-            yStart += yIncr;
-
-            String s = "-------------------------------------------------";
-            displayProfileString(xOffset, yStart, s);
-            yStart += yIncr;
-
-        }
-
-        return yStart;
-    }
     private final Transform m = new Transform();
     protected Color3f TEXT_COLOR = new Color3f(0f, 0f, 0f);
     private StringBuilder buf = new StringBuilder();
@@ -1156,4 +943,78 @@ public abstract class PhysicsApp {
     public void drawString(CharSequence s, int x, int y, Color3f color) {
         gl.drawString(s, x, y, color.x, color.y, color.z);
     }
+
+    protected float showProfileInfo(float xOffset, float yStart, float yIncr) {
+        if (!idle) {
+            time_since_reset = CProfileManager.getTimeSinceReset();
+        }
+
+        {
+            // recompute profiling data, and store profile strings
+
+            double totalTime = 0;
+
+            int frames_since_reset = CProfileManager.getFrameCountSinceReset();
+
+            profileIterator.first();
+
+            double parent_time = profileIterator.isRoot() ? time_since_reset : profileIterator.getCurrentParentTotalTime();
+
+            {
+                buf.setLength(0);
+                buf.append("--- Profiling: ");
+                buf.append(profileIterator.getCurrentParentName());
+                buf.append(" (total running time: ");
+                FastFormat.append(buf, (float) parent_time, 3);
+                buf.append(" ms) ---");
+                displayProfileString(xOffset, yStart, buf);
+                yStart += yIncr;
+                String s = "press number (1,2...) to display child timings, or 0 to go up to parent";
+                displayProfileString(xOffset, yStart, s);
+                yStart += yIncr;
+            }
+
+            double accumulated_time = 0.f;
+
+            for (int i = 0; !profileIterator.isDone(); profileIterator.next()) {
+                double current_total_time = profileIterator.getCurrentTotalTime();
+                accumulated_time += current_total_time;
+                double fraction = parent_time > BulletGlobals.FLT_EPSILON ? (current_total_time / parent_time) * 100 : 0f;
+
+                buf.setLength(0);
+                FastFormat.append(buf, ++i);
+                buf.append(" -- ");
+                buf.append(profileIterator.getCurrentName());
+                buf.append(" (");
+                FastFormat.append(buf, (float) fraction, 2);
+                buf.append(" %) :: ");
+                FastFormat.append(buf, (float) (current_total_time / (double) frames_since_reset), 3);
+                buf.append(" ms / frame (");
+                FastFormat.append(buf, profileIterator.getCurrentTotalCalls());
+                buf.append(" calls)");
+
+                displayProfileString(xOffset, yStart, buf);
+                yStart += yIncr;
+                totalTime += current_total_time;
+            }
+
+            buf.setLength(0);
+            buf.append("Unaccounted (");
+            FastFormat.append(buf, (float) (parent_time > BulletGlobals.FLT_EPSILON ? ((parent_time - accumulated_time) / parent_time) * 100 : 0.f), 3);
+            buf.append(" %) :: ");
+            FastFormat.append(buf, (float) (parent_time - accumulated_time), 3);
+            buf.append(" ms");
+
+            displayProfileString(xOffset, yStart, buf);
+            yStart += yIncr;
+
+            String s = "-------------------------------------------------";
+            displayProfileString(xOffset, yStart, s);
+            yStart += yIncr;
+
+        }
+
+        return yStart;
+    }
+
 }

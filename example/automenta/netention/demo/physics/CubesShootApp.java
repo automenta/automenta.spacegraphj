@@ -35,7 +35,7 @@ public class CubesShootApp extends DefaultPhysicsApp {
     }
 
     public void addGround() {
-        CollisionShape groundShape = new BoxShape(new Vector3f(50f, 50f, 50f));
+        CollisionShape groundShape = new BoxShape(new Vector3f(50f, 25f, 50f));
         //collisionShapes.add(groundShape);
 
         Transform groundTransform = new Transform();

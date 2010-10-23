@@ -229,4 +229,16 @@ public interface BodyControl {
         protected void drawFront(IGL gl) {
         }
     }
+
+    //GridRetina(int pixelwidth, int pixelheight, float minUpdateInterval, float minDisplayInterval, float pixelProbability, floatDisplayScale)
+        //minUpdateInterval = 0, don't update
+        //minDisplayInterval = 0, don't display
+
+        //displayScale = 0: dont display
+        //displayScale = 1.0 : display in full resolution (using MatrixScreen)
+        // 0 < x < 1.0 : display at scaled resolution (rounded to integer measurement)
+
+        //setVisibleDistance(min, max, curve) - adjusts range window: min=black, max=white
+            //curve = ( linear | logarithmic | exponential )
+
 }
