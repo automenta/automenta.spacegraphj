@@ -2,15 +2,11 @@
  * To change this template, choose Tools | Templates
  * and open the template in the editor.
  */
-package automenta.netention.demo.physics;
+package automenta.spacegraph.physics;
 
-import automenta.spacegraph.swing.SwingWindow;
 import com.bulletphysics.demos.applet.Cylinder;
 import com.bulletphysics.demos.applet.Disk;
 import com.bulletphysics.demos.applet.Sphere;
-import com.bulletphysics.demos.concave.ConcaveDemo;
-import com.bulletphysics.demos.opengl.DemoApplication;
-import com.bulletphysics.demos.opengl.GLDebugDrawer;
 import com.bulletphysics.demos.opengl.IGL;
 import com.sun.opengl.util.Animator;
 import com.sun.opengl.util.BufferUtil;
@@ -20,8 +16,6 @@ import java.awt.event.ComponentListener;
 import java.nio.FloatBuffer;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import javax.media.opengl.GL2;
 import javax.media.opengl.GLCapabilities;
 import javax.media.opengl.GLProfile;
@@ -56,18 +50,6 @@ public class PhysicsPanel extends JPanel implements IGL, ComponentListener {
     int cylinderSegments = 15;
     int cylinderLoops = 10;
 
-    public static void main(String[] args) {
-        PhysicsPanel surface = new PhysicsPanel();
-        DemoApplication app = new ConcaveDemo(surface);
-        try {
-            app.initPhysics();
-        } catch (Exception ex) {
-            Logger.getLogger(PhysicsPanel.class.getName()).log(Level.SEVERE, null, ex);
-        }
-        app.getDynamicsWorld().setDebugDrawer(new GLDebugDrawer(surface));
-        new PhysicsController(surface, app);
-        new SwingWindow(surface, 800, 600, true);
-    }
 
     public PhysicsPanel() {
         super(new BorderLayout());

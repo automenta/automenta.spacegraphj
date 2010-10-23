@@ -3,7 +3,7 @@
  * and open the template in the editor.
  */
 
-package automenta.netention.demo.physics;
+package automenta.spacegraph.physics;
 
 /**
  *

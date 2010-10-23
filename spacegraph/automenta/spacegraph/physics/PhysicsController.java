@@ -1,7 +1,6 @@
-package automenta.netention.demo.physics;
+package automenta.spacegraph.physics;
 
 import automenta.spacegraph.control.Repeat;
-import com.bulletphysics.demos.opengl.DemoApplication;
 import java.awt.event.KeyEvent;
 import java.awt.event.KeyListener;
 import java.awt.event.MouseEvent;
@@ -20,11 +19,11 @@ import javax.media.opengl.awt.GLCanvas;
 public class PhysicsController implements GLEventListener, MouseMotionListener, MouseListener, KeyListener, MouseWheelListener {
     private final PhysicsPanel surface;
     private final GLCanvas canvas;
-    private final DemoApplication app;
+    private final PhysicsApp app;
 
     //see LWJGL.java in JBullet demos
 
-    public PhysicsController(PhysicsPanel surface, DemoApplication app) {
+    public PhysicsController(PhysicsPanel surface, PhysicsApp app) {
         super();
         this.surface = surface;
         this.canvas = surface.getCanvas();
